@@ -1,26 +1,21 @@
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import *
-from pyspark.sql.types import *
+from utils import create_spark_session, read_csv, filter_invalid_times, write_parquet
 
-spark = SparkSession \
-    .builder \
-    .appName("Airliness") \
-    .getOrCreate()
+BUCKET = "[BUCKET_NAME]"
+INPUT_PATH = f"s3://{BUCKET}/data/fedex.csv"
+OUTPUT_PATH = f"s3://{BUCKET}/output/fedex_bronze/"
 
-df_bronze = spark.read.csv(
-    "s3://[BUCKET_NAME]/data/fedex.csv",
-    header=True, inferSchema=True, sep=";", nullValue="NA"
-)
 
-df_bronze = df_bronze.filter(
-    (col("Actual_Shipment_Time") >= 0) & (col("Actual_Shipment_Time") <= 2359) &
-    (col("Planned_Shipment_Time") >= 0) & (col("Planned_Shipment_Time") <= 2359) &
-    (col("Planned_Delivery_Time") >= 0) & (col("Planned_Delivery_Time") <= 2359)
-)
+# Função principal: leitura do CSV bruto → filtro inicial → escrita em Parquet
+def main():
+    spark = create_spark_session("Airliness")
 
-df_bronze.write \
-    .mode("overwrite") \
-    .partitionBy("Year", "Month") \
-    .parquet("s3://[BUCKET_NAME]/output/fedex_bronze/")
+    df = read_csv(spark, INPUT_PATH)
+    df = filter_invalid_times(df)
 
-spark.stop()
+    write_parquet(df, OUTPUT_PATH, ["Year", "Month"])
+
+    spark.stop()
+
+
+if __name__ == "__main__":
+    main()
