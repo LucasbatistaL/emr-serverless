@@ -1,33 +1,5 @@
 # EMR Serverless ETL Pipeline — Medallion Architecture
 
-##  Português
-
-### Visão Geral
-
-Projeto de engenharia de dados end-to-end usando AWS EMR Serverless para processar dados de envios através de uma Arquitetura Medallion (Bronze → Silver). O pipeline lê dados CSV brutos do S3, aplica transformações e validações de qualidade usando PySpark, e grava os resultados como arquivos Parquet particionados de volta no S3.
-
-### Arquitetura
-
-```
-S3 (CSV) → EMR Serverless (Spark Job - Bronze) → S3 (Parquet)
-S3 (CSV) → EMR Serverless (Spark Job - Silver) → S3 (Parquet)
-```
-
-### O que cada camada faz
-
-- **Bronze**: Lê o CSV bruto, filtra registros com horários inválidos, salva como Parquet particionado por Year/Month
-- **Silver**: Lê o CSV bruto, aplica todos os filtros da Bronze mais: conversão de timestamps, cálculo de tempo real de viagem, criação de Route ID, validações de qualidade (distância, tempo de viagem, outliers, carrier, códigos de origem/destino, consistência de tempo planejado, consistência de delay) e categorização de atraso (OnTime, Minor, Moderate, Severe)
-
-### Stack
-
-- AWS EMR Serverless (Spark)
-- AWS S3 (armazenamento)
-- AWS IAM (acesso com privilégio mínimo)
-- PySpark
-- AWS CLI
-
----
-
 ## 🇺🇸 English
 
 ### Overview
@@ -54,137 +26,165 @@ S3 (CSV) → EMR Serverless (Spark Job - Silver) → S3 (Parquet)
 - PySpark
 - AWS CLI
 
-### Step-by-step with commands
+---
 
-#### 1. Configure AWS SSO CLI access
+## 🇧🇷 Português
+
+### Visão Geral
+
+Projeto de engenharia de dados end-to-end usando AWS EMR Serverless para processar dados de envios através de uma Arquitetura Medallion (Bronze → Silver). O pipeline lê dados CSV brutos do S3, aplica transformações e validações de qualidade usando PySpark, e grava os resultados como arquivos Parquet particionados de volta no S3.
+
+### Arquitetura
+
+```
+S3 (CSV) → EMR Serverless (Spark Job - Bronze) → S3 (Parquet)
+S3 (CSV) → EMR Serverless (Spark Job - Silver) → S3 (Parquet)
+```
+
+### O que cada camada faz
+
+- **Bronze**: Lê o CSV bruto, filtra registros com horários inválidos, salva como Parquet particionado por Year/Month
+- **Silver**: Lê o CSV bruto, aplica todos os filtros da Bronze mais: conversão de timestamps, cálculo de tempo real de viagem, criação de Route ID, validações de qualidade (distância, tempo de viagem, outliers, carrier, códigos de origem/destino, consistência de tempo planejado, consistência de delay) e categorização de atraso (OnTime, Minor, Moderate, Severe)
+
+### Stack
+
+- AWS EMR Serverless (Spark)
+- AWS S3 (armazenamento)
+- AWS IAM (acesso com privilégio mínimo)
+- PySpark
+- AWS CLI
+
+### Passo a passo com comandos
+
+#### 1. Configurar acesso SSO via AWS CLI
 
 ```bash
 aws configure sso
 ```
 
-You will be prompted for:
-- SSO session name: `[SESSION_NAME]`
-- SSO start URL: `https://[YOUR_ORG].awsapps.com/start`
+Será solicitado:
+- SSO session name: `[NOME_DA_SESSAO]`
+- SSO start URL: `https://[SUA_ORG].awsapps.com/start`
 - SSO region: `us-east-1`
-- SSO registration scopes: press Enter (default)
-- Default region: `us-east-1`
-- Profile name: `[PROFILE_NAME]`
+- SSO registration scopes: aperte Enter (padrão)
+- Região padrão: `us-east-1`
+- Nome do profile: `[NOME_DO_PROFILE]`
 
-Verify the connection:
-
-```bash
-aws sts get-caller-identity --profile [PROFILE_NAME]
-```
-
-#### 2. Create S3 bucket
+Verificar a conexão:
 
 ```bash
-aws s3api create-bucket --bucket [BUCKET_NAME] --region us-east-1 --profile [PROFILE_NAME]
+aws sts get-caller-identity --profile [NOME_DO_PROFILE]
 ```
 
-#### 3. Upload CSV data and PySpark scripts to S3
+#### 2. Criar bucket S3
 
 ```bash
-aws s3 cp data/fedex.csv s3://[BUCKET_NAME]/data/fedex.csv --profile [PROFILE_NAME]
-
-aws s3 cp scripts/camada_bronze.py s3://[BUCKET_NAME]/scripts/camada_bronze.py --profile [PROFILE_NAME]
-
-aws s3 cp scripts/camada_silver.py s3://[BUCKET_NAME]/scripts/camada_silver.py --profile [PROFILE_NAME]
+aws s3api create-bucket --bucket [NOME_DO_BUCKET] --region us-east-1 --profile [NOME_DO_PROFILE]
 ```
 
-#### 4. Create IAM Role with trust policy for EMR Serverless
+#### 3. Subir CSV e scripts PySpark para o S3
 
-The trust policy (`policies/trust-policy.json`) allows the EMR Serverless service to assume this role:
+```bash
+aws s3 cp data/fedex.csv s3://[NOME_DO_BUCKET]/data/fedex.csv --profile [NOME_DO_PROFILE]
+
+aws s3 cp scripts/camada_bronze.py s3://[NOME_DO_BUCKET]/scripts/camada_bronze.py --profile [NOME_DO_PROFILE]
+
+aws s3 cp scripts/camada_silver.py s3://[NOME_DO_BUCKET]/scripts/camada_silver.py --profile [NOME_DO_PROFILE]
+```
+
+#### 4. Criar IAM Role com trust policy para o EMR Serverless
+
+A trust policy (`policies/trust-policy.json`) permite que o serviço EMR Serverless assuma essa role:
 
 ```bash
 aws iam create-role \
   --role-name EMRServerlessJobRole \
   --assume-role-policy-document file://policies/trust-policy.json \
-  --profile [PROFILE_NAME]
+  --profile [NOME_DO_PROFILE]
 ```
 
-#### 5. Attach least privilege policy
+#### 5. Anexar policy de privilégio mínimo
 
-The execution policy (`policies/emr-policy.json`) grants only the necessary permissions:
-- **Read**: `s3:GetObject` and `s3:ListBucket` scoped to `data/` and `scripts/` paths
-- **Write**: `s3:PutObject` and `s3:DeleteObject` scoped to `output/` path only
-- **Logs**: CloudWatch log creation scoped to the account
+A policy de execução (`policies/emr-policy.json`) concede apenas as permissões necessárias:
+- **Leitura**: `s3:GetObject` e `s3:ListBucket` restrito aos paths `data/` e `scripts/`
+- **Escrita**: `s3:PutObject` e `s3:DeleteObject` restrito ao path `output/`
+- **Logs**: Criação de logs no CloudWatch restrita à conta
 
 ```bash
 aws iam put-role-policy \
   --role-name EMRServerlessJobRole \
   --policy-name EMRServerlessJobPolicy \
   --policy-document file://policies/emr-policy.json \
-  --profile [PROFILE_NAME]
+  --profile [NOME_DO_PROFILE]
 ```
 
-#### 6. Create EMR Serverless application
+#### 6. Criar aplicação EMR Serverless
 
 ```bash
 aws emr-serverless create-application \
   --release-label emr-7.1.0 \
   --type SPARK \
   --name "medallion-pipeline" \
-  --profile [PROFILE_NAME]
+  --profile [NOME_DO_PROFILE]
 ```
 
-Save the `applicationId` from the response — you will need it to submit jobs.
+Anote o `applicationId` da resposta — será necessário para submeter os jobs.
 
-#### 7. Submit Bronze job
+#### 7. Submeter job Bronze
 
-Edit `job-driver.json` and set the `entryPoint` to your Bronze script path:
+Edite o `job-driver.json` e defina o `entryPoint` para o script Bronze:
 
 ```json
 {
     "sparkSubmit": {
-        "entryPoint": "s3://[BUCKET_NAME]/scripts/camada_bronze.py",
+        "entryPoint": "s3://[NOME_DO_BUCKET]/scripts/camada_bronze.py",
         "sparkSubmitParameters": "--conf spark.executor.cores=1 --conf spark.executor.memory=4g --conf spark.driver.cores=1 --conf spark.driver.memory=4g --conf spark.executor.instances=1"
     }
 }
 ```
 
-Submit the job:
+Submeter o job:
 
 ```bash
 aws emr-serverless start-job-run \
   --application-id [APPLICATION_ID] \
   --execution-role-arn arn:aws:iam::[ACCOUNT_ID]:role/EMRServerlessJobRole \
   --job-driver file://job-driver.json \
-  --profile [PROFILE_NAME]
+  --profile [NOME_DO_PROFILE]
 ```
 
-Monitor the job status:
+Acompanhar o status:
 
 ```bash
 aws emr-serverless get-job-run \
   --application-id [APPLICATION_ID] \
   --job-run-id [JOB_RUN_ID] \
-  --profile [PROFILE_NAME]
+  --profile [NOME_DO_PROFILE]
 ```
 
-States: `SUBMITTED` → `PENDING` → `SCHEDULED` → `RUNNING` → `SUCCESS`
+Estados: `SUBMITTED` → `PENDING` → `SCHEDULED` → `RUNNING` → `SUCCESS`
 
-#### 8. Submit Silver job
+#### 8. Submeter job Silver
 
-Update `job-driver.json` entryPoint to `camada_silver.py` and submit again:
+Atualize o `entryPoint` no `job-driver.json` para `camada_silver.py` e submeta novamente:
 
 ```bash
 aws emr-serverless start-job-run \
   --application-id [APPLICATION_ID] \
   --execution-role-arn arn:aws:iam::[ACCOUNT_ID]:role/EMRServerlessJobRole \
   --job-driver file://job-driver.json \
-  --profile [PROFILE_NAME]
+  --profile [NOME_DO_PROFILE]
 ```
 
-#### 9. Verify Parquet output in S3
+#### 9. Verificar output Parquet no S3
 
 ```bash
-aws s3 ls s3://[BUCKET_NAME]/output/fedex_bronze/ --recursive --profile [PROFILE_NAME]
+aws s3 ls s3://[NOME_DO_BUCKET]/output/fedex_bronze/ --recursive --profile [NOME_DO_PROFILE]
 
-aws s3 ls s3://[BUCKET_NAME]/output/fedex_silver/ --recursive --profile [PROFILE_NAME]
+aws s3 ls s3://[NOME_DO_BUCKET]/output/fedex_silver/ --recursive --profile [NOME_DO_PROFILE]
 ```
 
-Expected output structure:
+Estrutura esperada:
 
 ```
 output/fedex_bronze/
@@ -198,19 +198,20 @@ output/fedex_bronze/
 └── _SUCCESS
 ```
 
-### IAM Policy — Least Privilege in practice
+### Policy IAM — Privilégio Mínimo na prática
 
-The execution role only allows scoped read/write operations. During testing, a duplicate job was accidentally submitted — the policy blocked the unauthorized overwrite attempt, proving the least privilege approach works in practice.
+A role de execução só permite operações de leitura/escrita com escopo restrito. Para validar a eficácia da policy, foi feita uma submissão adicional do job tentando replicar a escrita no mesmo path de output — a policy bloqueou a operação de sobrescrita não autorizada, comprovando que a abordagem de privilégio mínimo funciona na prática.
 
-### Project Structure
+### Estrutura do Projeto
 
 ```
 ├── scripts/
-│   ├── camada_bronze.py    # Bronze layer job
-│   └── camada_silver.py    # Silver layer job
+│   ├── utils.py            # Funções compartilhadas entre os jobs
+│   ├── camada_bronze.py    # Job da camada Bronze
+│   └── camada_silver.py    # Job da camada Silver
 ├── policies/
-│   ├── trust-policy.json   # Trust policy for EMR Serverless
-│   └── emr-policy.json     # Execution role permissions
-├── job-driver.json          # Spark job configuration
+│   ├── trust-policy.json   # Trust policy para o EMR Serverless
+│   └── emr-policy.json     # Permissões da role de execução
+├── job-driver.json          # Configuração do job Spark
 └── README.md
 ```
