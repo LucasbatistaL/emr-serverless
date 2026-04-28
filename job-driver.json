@@ -1,0 +1,6 @@
+{
+    "sparkSubmit": {
+        "entryPoint": "s3://[BUCKET_NAME]/scripts/[SCRIPT_NAME].py",
+        "sparkSubmitParameters": "--conf spark.executor.cores=1 --conf spark.executor.memory=4g --conf spark.driver.cores=1 --conf spark.driver.memory=4g --conf spark.executor.instances=1"
+    }
+}
